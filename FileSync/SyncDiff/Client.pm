@@ -32,6 +32,7 @@ package FileSync::SyncDiff::Client;
 $FileSync::SyncDiff::Client::VERSION = '0.01';
 
 use Moose;
+use namespace::clean;
 
 extends qw(FileSync::SyncDiff::Forkable);
 
@@ -122,7 +123,7 @@ has 'log' => (
 		isa => 'FileSync::SyncDiff::Log',
 		default => sub {
 			my $self = shift;
-			return FileSync::SyncDiff::Log->new( config => $self->config );
+			return FileSync::SyncDiff::Log->new();
 		}
 );
 
@@ -304,15 +305,7 @@ sub fork_and_connect {
 		$self->log->debug("Protocol should be setup");
 		my $protocol_obj = $self->protocol_object();
 
-		if( !$protocol_obj->_is_lock ){
-			# locking client
-    		$protocol_obj->_lock();
-
-			$protocol_obj->client_run();
-
-			# unlocking client
-    		$protocol_obj->_unlock();
-		}
+		$protocol_obj->client_run();
 
 		close( $sock );
 	} # end foreach $host

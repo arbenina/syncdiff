@@ -31,6 +31,7 @@
 package FileSync::SyncDiff::Protocol::v1;
 $FileSync::SyncDiff::Protocol::v1::VERSION = '0.01';
 use Moose;
+use namespace::clean;
 
 extends qw(FileSync::SyncDiff::SenderReceiver);
 
@@ -164,54 +165,6 @@ sub client_run {
 		$self->log->info("No updates found");
 	}
 } # end client_run()
-
-# save a reference on a using shared memory
-my $ref_shared_memory;
-
-sub _lock {
-    my ($self) = @_;
-    my $share = IPC::ShareLite->new(
-        -key     => 'sync',
-        -create  => 'yes',
-        -destroy => 'yes'
-    ) || confess $!;
-
-    $ref_shared_memory = $share;
-
-    my $lock_client = 1;
-
-    return $share->store( $lock_client );
-}
-
-sub _unlock {
-    my ($self) = @_;
-    my $share;
-    eval {
-        $share = IPC::ShareLite->new(
-            -key     => 'sync',
-            -create  => 'no',
-            -destroy => 'no'
-        );
-    } || return;
-
-    my $lock_client = 0;
-
-    return $share->store( $lock_client );
-}
-
-sub _is_lock {
-    my ($self) = @_;
-    my $share;
-    eval {
-        $share = IPC::ShareLite->new(
-            -key     => 'sync',
-            -create  => 'no',
-            -destroy => 'no'
-        );
-    } || return;
-
-    return $share->fetch();
-}
 
 sub get_updates_from_remote {
 	my( $self, $remote_previous_log_position ) = @_;

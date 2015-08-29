@@ -33,10 +33,12 @@ package FileSync::SyncDiff::Config;
 $FileSync::SyncDiff::Config::VERSION = '0.01';
 
 use Moose;
+use namespace::clean;
 
 use Parse::Lex;
 use FileSync::SyncDiff::ParseCfg;
 use FileSync::SyncDiff::Util;
+use FileSync::SyncDiff::Log;
 
 use Data::Dumper;
 

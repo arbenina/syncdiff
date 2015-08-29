@@ -32,6 +32,8 @@ package FileSync::SyncDiff::Log;
 $FileSync::SyncDiff::Log::VERSION = '0.01';
 
 use Moose;
+use namespace::clean;
+
 use Log::Log4perl qw(get_logger :levels);
 use Log::Log4perl::Appender;
 use Log::Log4perl::Layout::PatternLayout;

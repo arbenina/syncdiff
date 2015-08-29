@@ -32,6 +32,7 @@ package FileSync::SyncDiff::File;
 $FileSync::SyncDiff::File::VERSION = '0.01';
 
 use Moose;
+use namespace::clean -except => ['meta'];
 
 #
 #
@@ -69,88 +70,88 @@ has 'dbref' => (
 
 has 'path' => (
 		is	=> 'rw',
-		isa	=> 'Str',
+		isa	=> 'Maybe[Str]',
 		);
 
 has 'filename' => (
 		is	=> 'rw',
-		isa	=> 'Str',
+		isa	=> 'Maybe[Str]',
 		);
 
 has 'syncgroup' => (
 		is	=> 'rw',
-		isa	=> 'Str',
+		isa	=> 'Maybe[Str]',
 		);
 
 has 'syncbase' => (
 		is	=> 'rw',
-		isa	=> 'Str',
+		isa	=> 'Maybe[Str]',
 		);
 
 has 'filetype' => (
 		is	=> 'rw',
-		isa	=> 'Str',
+		isa	=> 'Maybe[Str]',
 		);
 
 has 'inode_num' => (
 		is	=> 'rw',
-		isa	=> 'Str',
+		isa	=> 'Maybe[Str]',
 		);
 
 has 'mode' => (
 		is	=> 'rw',
-		isa	=> 'Str',
+		isa	=> 'Maybe[Str]',
 		);
 
 has 'uid' => (
 		is	=> 'rw',
-		isa	=> 'Str',
+		isa	=> 'Maybe[Str]',
 		);
 
 has 'username' => (
 		is	=> 'rw',
-		isa	=> 'Str',
+		isa	=> 'Maybe[Str]',
 		);
 
 has 'gid' => (
 		is	=> 'rw',
-		isa	=> 'Str',
+		isa	=> 'Maybe[Str]',
 		);
 
 has 'groupname' => (
 		is	=> 'rw',
-		isa	=> 'Str',
+		isa	=> 'Maybe[Str]',
 		);
 
 has 'size_bytes' => (
 		is	=> 'rw',
-		isa	=> 'Str',
+		isa	=> 'Maybe[Str]',
 		);
 
 has 'mtime' => (
 		is	=> 'rw',
-		isa	=> 'Str',
+		isa	=> 'Maybe[Str]',
 		);
 
 has 'extattr' => (
 		is	=> 'rw',
-		isa	=> 'Str',
+		isa	=> 'Maybe[Str]',
 		);
 
 has 'checksum' => (
 		is	=> 'rw',
-		isa	=> 'Str',
+		isa	=> 'Maybe[Str]',
 		default	=> '',
 		);
 
 has 'last_transaction' => (
 		is	=> 'rw',
-		isa	=> 'Str',
+		isa	=> 'Maybe[Str]',
 		);
 
 has 'deleted' => (
 		is	=> 'rw',
-		isa	=> 'Str',
+		isa	=> 'Maybe[Str]',
 		default => '0',
 		);
 
@@ -222,9 +223,9 @@ sub _overload_comparison {
 		$left->log->debug("Right value: %s", $right->_get_file_attr_value( $attr->name ));
 
 		if(
-			"". $left->_get_file_attr_value( $attr->name ) .""
-			ne
-			"". $right->_get_file_attr_value( $attr->name ) .""
+			$left->_get_file_attr_value( $attr->name ) &&
+			$right->_get_file_attr_value( $attr->name ) &&
+			$left->_get_file_attr_value( $attr->name ) ne $right->_get_file_attr_value( $attr->name )
 		){
 			return 0;
 		}
@@ -334,7 +335,7 @@ sub checksum_file {
 sub filepath {
 	my( $self ) = @_;
 
-	if( $self->path eq "./" ){
+	if( $self->path && $self->path eq "./" ){
 		return $self->filename;
 	}
 	return File::Spec->catfile( $self->path, $self->filename );
@@ -376,6 +377,9 @@ sub to_hash {
 
 sub from_hash {
 	my( $self, $file_hash ) = @_;
+
+	return undef if ( ref($file_hash) ne 'HASH' );
+
 	$self->path( $file_hash->{path} ) if( defined $file_hash->{path} );
 	$self->filename( $file_hash->{filename} ) if( defined $file_hash->{filename} );
 

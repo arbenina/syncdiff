@@ -32,39 +32,88 @@ package FileSync::SyncDiff::Notify;
 $FileSync::SyncDiff::Notify::VERSION = '0.01';
 
 use Moose;
+use namespace::clean;
 
 extends qw(FileSync::SyncDiff::Forkable);
 
 use FileSync::SyncDiff::Scanner;
 use FileSync::SyncDiff::Config;
+use FileSync::SyncDiff::Log;
 
-use Carp qw(cluck confess carp);
 use AnyEvent;
-use File::Pid qw();
 use JSON::XS qw(encode_json);
 use Net::Address::IP::Local;
 use File::Spec::Functions qw(catfile);
-use IPC::ShareLite qw();
 use Net::Ping qw();
-
-use sigtrap 'handler' => \&_kill_handler, 'HUP', 'INT','ABRT','QUIT','TERM';
 
 use Data::Dumper;
 
-use constant PID_FILE => 'notify.pid';
-use constant PID_DIR  => './';
+use constant SUBSYSTEM_NAME => 'Notify';
 
 has 'config' => (
-        is  => 'rw',
-        isa => 'FileSync::SyncDiff::Config',
-        required => 1,
-        );
+    is       => 'rw',
+    isa      => 'FileSync::SyncDiff::Config',
+    required => 1,
+);
 
 has 'dbref' => (
-        is  => 'rw',
-        isa => 'Object',
-        required => 1,
-        );
+    is       => 'rw',
+    isa      => 'Object',
+    required => 1,
+);
+
+# Logger system
+has 'log' => (
+    is      => 'rw',
+    isa     => 'FileSync::SyncDiff::Log',
+    default => sub {
+        my $self = shift;
+        return FileSync::SyncDiff::Log->new( config => $self->config );
+    }
+);
+
+sub run {
+    my $self = shift;
+
+    if ( !$self->_is_running() ) {
+        $self->_clean();
+        $self->fork();
+    }
+    else {
+        $self->log->debug("'Notify' subsystem already running");
+    }
+}
+
+override 'run_child' => sub {
+    my ($self) = @_;
+
+    $self->_start();
+    $self->_load_plugin();
+};
+
+sub _start {
+    my ($self) = @_;
+    return $self->dbref->new_subsystem( { name => SUBSYSTEM_NAME, pid => $$ } );
+}
+
+sub _is_running {
+    my ($self) = @_;
+
+    my $info = $self->dbref->get_subsystem( { name => SUBSYSTEM_NAME } );
+    my $is_running = 0;
+    if ($info) {
+        my $is_exists = $info->{&SUBSYSTEM_NAME}{pid} && kill( 0, $info->{&SUBSYSTEM_NAME}{pid} ) ? 1 : 0;
+        my $is_enabled = $info->{&SUBSYSTEM_NAME}{enable} ? 1 : 0;
+        $is_running = $is_enabled && $is_exists ? 1 : 0;
+    }
+
+    return $is_running;
+}
+
+sub _clean {
+    my ($self) = @_;
+    return $self->dbref->clean_subsystems( { name => SUBSYSTEM_NAME } );
+}
 
 sub _load_plugin {
     my $self = shift;
@@ -78,82 +127,28 @@ sub _load_plugin {
         $self->_load_bsd();
     }
     else {
-        confess "$^O is not supported!";
+        $self->log->error( "%s is not supported!", $^O );
     }
 
     return 1;
-}
-
-sub run {
-    my $self = shift;
-
-    $self->start();
-
-    $self->fork();
-}
-
-sub stop {
-    my $self = shift;
-
-    my $is_running = 0;
-    my $share;
-    eval {
-        $share = IPC::ShareLite->new(
-            -key     => 'key',
-            -create  => 'no',
-            -destroy => 'no'
-        );
-    } || return;
-
-    $share->store( $is_running );
-
-    return $is_running;
-}
-
-sub start {
-    my $self = shift;
-
-    my $is_running = 1;
-    my $share = IPC::ShareLite->new(
-        -key     => 'key',
-        -create  => 'yes',
-        -destroy => 'no'
-    ) || confess $!;
-
-    $share->store( $is_running );
-
-    return $is_running;
-}
-
-sub is_running {
-    my $share;
-    eval {
-        $share = IPC::ShareLite->new(
-            -key     => 'key',
-            -create  => 'no',
-            -destroy => 'no'
-        );
-    } || return;
-
-    return $share->fetch();
 }
 
 sub _load_linux {
     my $self = shift;
 
     my @dirs;
-    for my $group_data ( values %{$self->config->config->{groups}} ){
-        push(@dirs, $group_data->{patterns});
+    for my $group_data ( values %{ $self->config->config->{groups} } ) {
+        push( @dirs, $group_data->{patterns} );
     }
 
     my $cv = AnyEvent->condvar;
 
-        my $inotify = FileSync::SyncDiff::Notify::Plugin::Inotify2->new(
-            dirs => @dirs,
-            event_receiver => sub {
-                $self->_process_events(@_);
-            }
-        );
+    my $inotify = FileSync::SyncDiff::Notify::Plugin::Inotify2->new(
+        dirs           => @dirs,
+        event_receiver => sub {
+            $self->_process_events(@_);
+        }
+    );
 
     $cv->recv;
 }
@@ -162,102 +157,80 @@ sub _load_bsd {
     my $self = shift;
 
     my @dirs;
-    for my $group_data ( values %{$self->config->config->{groups}} ){
-        push(@dirs, $group_data->{patterns});
+    for my $group_data ( values %{ $self->config->config->{groups} } ) {
+        push( @dirs, $group_data->{patterns} );
     }
 
     my $cv = AnyEvent->condvar;
 
-        my $kqueue = FileSync::SyncDiff::Notify::Plugin::KQueue->new(
-            includes => @dirs,
-            event_receiver => sub {
-                $self->_process_events(@_);
-            }
-        );
+    my $kqueue = FileSync::SyncDiff::Notify::Plugin::KQueue->new(
+        includes       => @dirs,
+        event_receiver => sub {
+            $self->_process_events(@_);
+        }
+    );
 
     $cv->recv;
 }
 
 sub _process_events {
-    my ($self, $event, $file, $groupbase) = @_;
-    if($event eq 'modify') {
-        # Notify daemon was stopped
-        return if ( ! $self->is_running() );
+    my ( $self, $event, $file, $groupbase ) = @_;
 
-        while ( my($group_name, $group_data) = each(%{$self->config->config->{groups}}) ) {
-
+    if ( $event eq 'modify' ) {
+        while ( my ( $group_name, $group_data ) = each( %{ $self->config->config->{groups} } ) ) {
             # Need to notify only those groups which contain a true include
             # for file which was modified
-            next if( ! grep{ $_ eq $groupbase }@{ $group_data->{patterns} } );
+            next if ( !grep { $_ eq $groupbase } @{ $group_data->{patterns} } );
 
-            NEXT_HOST:
-            for my $host ( @{ $group_data->{host} } ){
+            # Send notify request on localhost(server and notify-server on the same side)
+            $self->_send_notify_request( {
+                    host       => '127.0.0.1',
+                    port       => 7070,
+                    group_name => $group_name,
+                }
+            );
+
+            # Send notify request on other hosts(if it's needed)
+            for my $host ( @{ $group_data->{host} } ) {
                 my $p = Net::Ping->new();
-                if ( ! $p->ping($host) ){
-                    carp "$host is not alive!\n";
-                    next NEXT_HOST;
+                if ( !$p->ping( $host->{host} ) ) {
+                    $self->log->debug( "%s is not alive!", $host->{host} );
+                    next;
                 }
                 $p->close();
 
-                my $sock = new IO::Socket::INET (
-                                PeerAddr => $host,
-                                PeerPort => '7070',
-                                Proto => 'tcp',
-                                );
-                if( ! $sock ){
-                    cluck "Could not create socket: $!\n";
-                    next;
-                } # end skipping if the socket is broken
-
-                $sock->autoflush(1);
-
-                my %request = (
-                    'operation' => 'request_notify',
-                    'hostname'  => Net::Address::IP::Local->public,
-                    'group'     => $group_name,
+                $self->_send_notify_request( {
+                        host       => $host->{host},
+                        port       => 7070,
+                        group_name => $group_name,
+                    }
                 );
-                my $json = encode_json(\%request);
-                print $sock $json;
-
-                close $sock;
             }
-        }
-    }
-}
+        } ## end while ( my ( $group_name,...))
+    } ## end if ( $event eq 'modify')
+} ## end sub _process_events
 
-sub _kill_handler {
-    my $pid_obj = File::Pid->new({
-        file => catfile(PID_DIR, PID_FILE)
-    });
-    $pid_obj->remove;
-    exit(0);
-}
+sub _send_notify_request {
+    my ( $self, $info ) = @_;
 
-sub _daemonize {
-    my $self = shift;
-    my $pid_obj = File::Pid->new({
-        file => catfile(PID_DIR, PID_FILE)
-    });
+    my $sock = eval { IO::Socket::INET->new( PeerAddr => $info->{host}, PeerPort => $info->{port}, Proto => 'tcp', ); };
+    if ( !$sock ) {
+        $self->log->error( "Could not create socket: %s", $! );
+        return;
+    }    # end skipping if the socket is broken
 
-    my $pid;
-    eval {$pid = $pid_obj->running()};
-    if( $pid ){
-        print "Notifier is already running with $pid pid!";
-        exit(0);
-    }
+    $sock->autoflush(1);
 
-    $pid_obj->pid($$);
-    $pid_obj->write() || confess("Can't write $!");
-
-    return $pid_obj->pid;
-}
-
-override 'run_child' => sub {
-    my( $self ) = @_;
-
-    $self->_daemonize();
-
-    $self->_load_plugin();
-};
+    my %request = (
+        'operation' => 'notify',
+        'hostname'  => Net::Address::IP::Local->public,
+        'group'     => $info->{group_name},
+    );
+    my $json = encode_json( \%request );
+    print $sock $json;
+    close $sock;
+} ## end sub _send_notify_request
 
 __PACKAGE__->meta->make_immutable;
+
+1;

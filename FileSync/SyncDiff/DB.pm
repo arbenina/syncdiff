@@ -31,6 +31,7 @@
 package FileSync::SyncDiff::DB;
 $FileSync::SyncDiff::DB::VERSION = '0.01';
 use Moose;
+use namespace::clean;
 
 extends qw(FileSync::SyncDiff::Forkable);
 
@@ -311,6 +312,7 @@ sub create_database {
 	$dbh->do("CREATE TABLE servers_seen (id INTEGER PRIMARY KEY AUTOINCREMENT, hostname TEXT unique, transactionid TEXT, 'group' TEXT, timeadded INTEGER)");
 
 	$dbh->do("CREATE TABLE if not exists connections (id INTEGER PRIMARY KEY AUTOINCREMENT, host TEXT, port TEXT, auth_key TEXT, syncbase TEXT, timeadded INTEGER)");
+	$dbh->do("CREATE TABLE if not exists subsystems (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, pid INTEGER , enable INTEGER)");
 
 	my $transaction_id = sha256_hex( hostname() ."-". $$ ."-". time() );
 
@@ -405,7 +407,7 @@ sub clean_connections {
 	return $res;
 }
 
-sub is_exists_connection {
+sub get_connection {
 	my ($self,$info) = @_;
 	my $dbh = $self->dbh;
 	my $sth = undef;
@@ -419,11 +421,75 @@ sub is_exists_connection {
 	}
 
 	my $row_ref = $sth->fetchall_hashref('id');
-	if( scalar ( keys %$row_ref ) != 0 ){
-		return 1;
+	if( scalar ( keys %$row_ref ) == 0 ){
+		return undef;
 	}
 
-	return 0;
+	return $row_ref;
+}
+
+sub new_subsystem {
+	my ($self,$info) = @_;
+	my $dbh = $self->dbh;
+
+	my $res = eval {
+		my $add_subsystem = $dbh->prepare("INSERT INTO subsystems (name, pid, enable) VALUES( ?, ?, ? )");
+		$add_subsystem->execute( $info->{name}, $info->{pid}, 1 ) || die $DBI::errstr;
+	};
+	if ($@) {
+		$self->log->error("Error adding a new subsystem: %s,", $@);
+	}
+
+	return $res;
+}
+
+sub get_subsystem {
+	my ($self,$info) = @_;
+	my $dbh = $self->dbh;
+
+	my $sth = undef;
+
+	eval {
+		$sth = $dbh->prepare("SELECT * FROM subsystems WHERE name = ?");
+		$sth->execute( $info->{name} ) || die $DBI::errstr;
+	};
+	if ($@) {
+		$self->log->error("Error working with subsystems: %s", $@);
+	}
+
+	my $row_ref = $sth->fetchall_hashref('name');
+	if( scalar ( keys %$row_ref ) == 0 ){
+		return undef;
+	}
+
+	return $row_ref;
+}
+
+sub clean_subsystems {
+	my ($self,$info) = @_;
+	my $dbh = $self->dbh;
+
+	my $sql    = qq{ DELETE FROM subsystems };
+	my @params = ();
+	if ( defined $info ) {
+		push @params, { $info->{name} 	=> 'name = ?' }			if ( exists $info->{name} );
+		push @params, { $info->{pid}  	=> 'pid = ?' }			if ( exists $info->{pid} );
+		push @params, { $info->{enable} => 'enable = ?' }		if ( exists $info->{enable} );
+		if ( scalar @params > 0 ){
+			$sql .= qq{ WHERE };
+			$sql .= join( ' AND ', map { values %{$_} }@params );
+		}
+	}
+
+	my $res = eval {
+		my $del_connection = $dbh->prepare($sql);
+		$del_connection->execute( map { keys %{$_} }@params ) || die $DBI::errstr;
+	};
+	if ($@) {
+		$self->log->error("Error on clean up subsystems: %s", $@);
+	}
+
+	return $res;
 }
 
 sub new_transaction_id {
@@ -520,12 +586,14 @@ sub lookup_filelist {
 
 	my @filelist;
 
-	foreach my $id ( sort keys %$response ){
+	if ( $response ) {
+		foreach my $id ( sort keys %$response ){
 
-		my $fileobj = FileSync::SyncDiff::File->new( dbref => $self );
-		$fileobj->from_hash( $response->{$id} );
+			my $fileobj = FileSync::SyncDiff::File->new( dbref => $self );
+			$fileobj->from_hash( $response->{$id} );
 
-		push( @filelist, $fileobj );
+			push( @filelist, $fileobj );
+		}
 	}
 
 	return \@filelist;
@@ -574,7 +642,7 @@ sub getpwuid {
 		$response->{u_dir},
 		$response->{u_shell},
 		$response->{u_expire},
-		);
+	) if ( $response );
 } # end getpwuid()
 
 sub _getpwuid {
@@ -624,7 +692,7 @@ sub getgrgid {
 		$response->{g_passwd},
 		$response->{g_gid},
 		$response->{g_members},
-		);
+	) if ( $response );
 } # end getgrgid()
 
 sub _getgrgid {

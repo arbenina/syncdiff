@@ -32,6 +32,7 @@ package FileSync::SyncDiff::Notify::Plugin::Inotify2;
 $FileSync::SyncDiff::Plugin::Inotify2::VERSION = '0.01';
 
 use Moose;
+use namespace::clean -except => ['meta'];
 
 use MooseX::Types::Moose qw(CodeRef);
 use MooseX::Types -declare => ['Event'];
@@ -39,14 +40,14 @@ use MooseX::FileAttribute;
 
 use FileSync::SyncDiff::Notify::Event;
 use FileSync::SyncDiff::Notify::Event::Callback;
+use FileSync::SyncDiff::Log;
 
 use AnyEvent;
 use Linux::Inotify2;
 use File::Next;
+use Path::Class;
 
 use Data::Dumper;
-
-use namespace::clean -except => ['meta'];
 
 has 'dirs' => ( 
     is         => 'ro',
@@ -79,18 +80,26 @@ has 'inotify' => (
     lazy_build => 1,
 );
 
-sub _build_inotify {
-    my $self = shift;
-
-    Linux::Inotify2->new || confess "Inotify initialization failed: $!";
-}
-
 has 'io_watcher' => (
     init_arg => undef,
     is       => 'ro',
     builder  => '_build_io_watcher',
     required => 1,
 );
+
+has 'log' => (
+    is => 'rw',
+    isa => 'FileSync::SyncDiff::Log',
+    default => sub {
+        return FileSync::SyncDiff::Log->new();
+    }
+);
+
+sub _build_inotify {
+    my $self = shift;
+
+    Linux::Inotify2->new() || $self->log->fatal("Inotify initialization failed: %s", $!);
+}
 
 sub _build_io_watcher {
     my $self = shift;

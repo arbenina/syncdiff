@@ -130,13 +130,11 @@ if( $run_only_scan ){
 } # end if( $run_only_scan )
 
 if( $run_as_server ){
-	my $server = FileSync::SyncDiff::Server->new( config => $config->config, dbref => $dbconnection, log => $log );
+	my $server = FileSync::SyncDiff::Server->new( config => $config, dbref => $dbconnection, log => $log );
 	$server->run();
 
 	exit(0);
 }
-
-$notify->stop;
 
 foreach my $group_name ( keys %{ $config->config->{groups} } ){
 	$log->info("Main client loop - group: %s", $group_name);
@@ -148,5 +146,3 @@ foreach my $group_name ( keys %{ $config->config->{groups} } ){
 		$client->fork_and_connect();
 	} # end base foreach
 } # end group_name foreach
-
-$notify->start;

@@ -30,7 +30,9 @@
 
 package FileSync::SyncDiff::Forkable;
 $FileSync::SyncDiff::Forkable::VERSION = '0.01';
+
 use Moose;
+use namespace::clean;
 
 use FileSync::SyncDiff::Util;
 

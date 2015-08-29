@@ -32,19 +32,19 @@ package FileSync::SyncDiff::Notify::Plugin::KQueue;
 $FileSync::SyncDiff::Plugin::KQueue::VERSION = '0.01';
 
 use Moose;
+use namespace::clean -except => ['meta'];
+
 use MooseX::Types::Moose qw(CodeRef);
 use MooseX::Types -declare => ['Event'];
 use MooseX::FileAttribute;
-use namespace::clean -except => ['meta'];
 
 use FileSync::SyncDiff::Notify::Event;
 use FileSync::SyncDiff::Notify::Event::Callback;
+use FileSync::SyncDiff::Log;
 
-use Carp qw(confess carp);
 use IO::KQueue;
 use AnyEvent;
 use File::Next;
-use Path::Class;
 
 use Data::Dumper;
 
@@ -100,10 +100,18 @@ has '_watcher' => (
     is         => 'rw',
 );
 
+has 'log' => (
+    is => 'rw',
+    isa => 'FileSync::SyncDiff::Log',
+    default => sub {
+        return FileSync::SyncDiff::Log->new();
+    }
+);
+
 sub _build_kqueue {
     my $self = shift;
 
-    IO::KQueue->new() || confess "Unable to create new IO::KQueue object";
+    IO::KQueue->new() || $self->log->fatal("Unable to create new IO::KQueue object");
 }
 
 sub _build_io_watcher {
@@ -136,9 +144,10 @@ sub _check_filehandle_count {
     my ($self) = @_;
 
     my $count = $self->_watcher_count;
-    carp "KQueue requires a filehandle for each watched file and directory.\n"
-      . "You currently have $count filehandles for this object.\n"
-      if $count > $WARN_FILEHANDLE_LIMIT;
+    $self->log->warning( q{
+        KQueue requires a filehandle for each watched file and directory.
+        You currently have %s filehandles for this object.}, $count
+    ) if $count > $WARN_FILEHANDLE_LIMIT;
 }
 
 sub _watcher_count {
@@ -189,11 +198,11 @@ sub _watch {
     my ( $self, $o ) = @_;
 
     open my $fh, "<" ,$o->{path} || do {
-            carp
-              "KQueue requires a filehandle for each watched file and directory.\n"
-              . "You have exceeded the number of filehandles permitted by the OS.\n"
-              if $! =~ /^Too many open files/;
-            confess "Can't open ($o->{path}): $!";
+            $self->log->warning( q{
+              KQueue requires a filehandle for each watched file and directory.
+              You have exceeded the number of filehandles permitted by the OS.}
+            ) if $! =~ /^Too many open files/;
+            $self->log->fatal("Can't open (%s): %s", $o->{path}, $!);
     };
     $self->kqueue->EV_SET(
             fileno($fh),

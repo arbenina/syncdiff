@@ -32,6 +32,7 @@ package FileSync::SyncDiff::Server;
 $FileSync::SyncDiff::Server::VERSION = '0.01';
 
 use Moose;
+use namespace::clean;
 
 extends 'FileSync::SyncDiff::Forkable', 'FileSync::SyncDiff::SenderReceiver';
 
@@ -44,7 +45,7 @@ use FileSync::SyncDiff::Util;
 use FileSync::SyncDiff::Protocol::v1;
 use FileSync::SyncDiff::Notify;
 use FileSync::SyncDiff::Config;
-use FileSync::SyncDiff::Client;
+use FileSync::SyncDiff::Scanner;
 use FileSync::SyncDiff::Log;
 
 #
@@ -214,31 +215,17 @@ sub _process_request {
 	if(
 		exists( $response->{operation} )
 		&&
-		$response->{operation} eq "request_notify"
+		$response->{operation} eq "notify"
 		&&
 		exists( $response->{group} )
 		&&
 		exists( $response->{hostname} )
 	){
-		my $inotify = FileSync::SyncDiff::Notify->new( config => $self->config, dbref => $self->dbref );
-		$inotify->run();
-		$inotify->stop();
-
 		my $group_name = $response->{group};
 		foreach my $base ( @{ $self->config->config->{groups}->{$group_name}->{patterns} } ){
-			my $client = FileSync::SyncDiff::Client->new(
-					config_options => $self->config->get_group_config( $group_name ),
-					group => $group_name,
-					groupbase => $base,
-					groupbase_path => $self->config->get_truepath( $base ),
-					dbref => $self->dbref
-					);
-
-			$client->fork_and_connect();
-
+			my $scanner = FileSync::SyncDiff::Scanner->new( dbref => $self->dbref, group => $group_name, groupbase => $base, log => $self->log );
+			$scanner->fork_and_scan();
 		} # end base foreach
-
-		$inotify->start();
 
 		return 0;
 	}

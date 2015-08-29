@@ -31,6 +31,7 @@
 package FileSync::SyncDiff::Scanner;
 $FileSync::SyncDiff::Scanner::VERSION = '0.01';
 use Moose;
+use namespace::clean;
 
 extends qw(FileSync::SyncDiff::Forkable);
 

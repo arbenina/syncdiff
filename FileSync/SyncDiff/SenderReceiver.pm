@@ -32,6 +32,7 @@ package FileSync::SyncDiff::SenderReceiver;
 $FileSync::SyncDiff::SenderReceiver::VERSION = '0.01';
 
 use Moose;
+use namespace::clean;
 
 extends qw(FileSync::SyncDiff::Forkable);
 

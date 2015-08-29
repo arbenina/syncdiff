@@ -47,14 +47,14 @@ my $builder = $class->new(
         'JSON::XS'                  => 2.27,
         'AnyEvent'                  => 0,
         'File::Next'                => 0,
-        'File::Pid'                 => 0,
         'Net::Address::IP::Local'   => 0,
-        'IPC::ShareLite'            => 0,
         'MooseX::FileAttribute'     => 0,
         'URI'                       => 1.67,
         'Plack'                     => 1.0037,
         'IO::Socket::Forwarder'     => 0.02,
         'Log::Log4perl'             => 1.46,
+        'namespace::clean'          => 0.25,
+        'Path::Class'               => 0.35,
     },
     meta_merge     => {
         resources => {

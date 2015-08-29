@@ -32,6 +32,7 @@ package FileSync::SyncDiff::Forwarder;
 $FileSync::SyncDiff::Forwarder::VERSION = '0.01';
 
 use Moose;
+use namespace::clean;
 
 extends 'FileSync::SyncDiff::Forkable';
 
@@ -55,8 +56,8 @@ use Data::Dumper;
 # moose variables
 #
 has 'dbref' => (
-    is  => 'rw',
-    isa => 'Object',
+    is       => 'rw',
+    isa      => 'Object',
     required => 1,
 );
 
@@ -73,7 +74,7 @@ has 'server' => (
     default  => sub {
         {
             port  => '7070',
-            host  => inet_ntoa(inet_aton(domainname())),
+            host  => inet_ntoa( inet_aton( domainname() ) ),
             proto => 'tcp',
         }
     },
@@ -87,7 +88,7 @@ has 'middleware' => (
     default  => sub {
         {
             port  => '7069',
-            host  => inet_ntoa(inet_aton(domainname())),
+            host  => inet_ntoa( inet_aton( domainname() ) ),
             proto => 'tcp',
         }
     },
@@ -103,11 +104,11 @@ has 'response' => (
 );
 
 has 'log' => (
-        is => 'rw',
-        isa => 'FileSync::SyncDiff::Log',
-        default => sub {
-            return FileSync::SyncDiff::Log->new();
-        }
+    is      => 'rw',
+    isa     => 'FileSync::SyncDiff::Log',
+    default => sub {
+        return FileSync::SyncDiff::Log->new();
+    }
 );
 
 #
@@ -128,15 +129,16 @@ use constant {
 # content - content in appropriate format
 #*
 sub run {
-    my( $self ) = @_;
+    my ($self) = @_;
     my $response = {};
-    if ( !$self->dbref->is_exists_connection($self->client) ) {
+    if ( !$self->_is_forwarding() ) {
         if ( my $port = $self->_get_random_port() ) {
             $self->middleware->{port} = $port;
-            my $content = encode_json({
-                host => $self->middleware->{host},
-                port => $port,
-            });
+            my $content = encode_json( {
+                    host => $self->middleware->{host},
+                    port => $port,
+                }
+            );
             $response = {
                 code         => 200,
                 content_type => 'application/json',
@@ -155,18 +157,18 @@ sub run {
     $self->_response($response);
 
     return $self->response;
-} # end run()
+}# end run()
 
 #
 # Need to override this from Forkable
 #
 
 override 'run_child' => sub {
-    my( $self ) = @_;
+    my ($self) = @_;
 
     # Single client process - single forward connection
     $self->_forward();
-}; # end run_child()
+};
 
 #----------------------------------------------------------------------
 #** @method private _get_random_port ($self)
@@ -174,22 +176,16 @@ override 'run_child' => sub {
 # @return scalar port
 #*
 sub _get_random_port {
-    my ( $self ) = @_;
+    my ($self) = @_;
 
     my $port   = undef;
     my $socket = undef;
     my $limit  = 0;
     do {
-        $port = int( rand( MAX_PORT_NUMBER - FIRST_PUBLIC_PORT ) + FIRST_PUBLIC_PORT );
-        $socket = eval {
-            IO::Socket::INET->new(
-                LocalPort => $port,
-                Proto => 'tcp',
-                Timeout => 1
-                );
-        };
+        $port = int( rand( MAX_PORT_NUMBER- FIRST_PUBLIC_PORT ) + FIRST_PUBLIC_PORT );
+        $socket = eval { IO::Socket::INET->new( LocalPort => $port, Proto => 'tcp', Timeout => 1 ); };
         ++$limit;
-    } until( $socket || $limit > TRY_PORT_LIMIT );
+    } until ( $socket || $limit > TRY_PORT_LIMIT );
 
     close($socket) if ( defined $socket );
 
@@ -202,44 +198,38 @@ sub _get_random_port {
 # @return scalar, True value in success
 #*
 sub _forward {
-    my ( $self ) = @_;
+    my ($self) = @_;
 
-    my $listener = eval {
-        IO::Socket::INET->new(
-            LocalPort => $self->middleware->{port},
-            Proto => $self->middleware->{proto},
-            Listen => 2,
-            ReuseAddr => 1
-            );
-    };
+    my $listener = eval { IO::Socket::INET->new( LocalPort => $self->middleware->{port}, Proto => $self->middleware->{proto}, Listen => 2, ReuseAddr => 1 ); };
     if ( !$listener ) {
-        $self->log->fatal("Could not create socket %s", $!);
+        $self->log->fatal( "Could not create socket %s", $! );
     }
 
     $self->middleware->{socket} = $listener;
-    $self->client->{port} = $self->middleware->{port};
-    $self->dbref->new_connection($self->client);
+    $self->client->{port}       = $self->middleware->{port};
+    $self->dbref->new_connection( $self->client );
 
     my $client = $listener->accept();
-    my $server = eval {
-        IO::Socket::INET->new(
-            PeerAddr => $self->server->{host},
-            PeerPort => $self->server->{port},
-            Proto => $self->server->{proto},
-            );
-    };
-    if( !$server ){
-        $self->log->fatal("Could not connect to syncdiff server: %s", $!);
+    my $server = eval { IO::Socket::INET->new( PeerAddr => $self->server->{host}, PeerPort => $self->server->{port}, Proto => $self->server->{proto}, ); };
+    if ( !$server ) {
+        $self->log->fatal( "Could not connect to syncdiff server: %s", $! );
     }
 
     $self->server->{socket} = $server;
     $server->autoflush(1);
-    forward_sockets($client, $server);
+    forward_sockets( $client, $server );
 
     $self->_clean_up();
 
     return 1;
-} # end _forward
+}# end _forward
+
+sub _is_forwarding {
+    my ($self) = @_;
+    my $info = $self->dbref->get_connection( $self->client );
+
+    return $info ? 1 : 0;
+}
 
 #----------------------------------------------------------------------
 #** @method private _clean_up ($self)
@@ -247,19 +237,19 @@ sub _forward {
 # @return scalar True value in success
 #*
 sub _clean_up {
-    my ( $self ) = @_;
+    my ($self) = @_;
 
-    if ( defined $self->middleware->{socket} ){
-        close($self->middleware->{socket});
+    if ( defined $self->middleware->{socket} ) {
+        close( $self->middleware->{socket} );
     }
-    if ( defined $self->server->{socket} ){
-        close($self->server->{socket});
+    if ( defined $self->server->{socket} ) {
+        close( $self->server->{socket} );
     }
 
-    $self->dbref->clean_connections($self->client);
+    $self->dbref->clean_connections( $self->client );
 
     return 1;
-} # end _clean_up
+}# end _clean_up
 
 __PACKAGE__->meta->make_immutable;
 
